@@ -1,0 +1,273 @@
+with booking as (select b.uuid ,b.booking_type,
+b.created_at, extract (month from b.created_at) as booking_month,extract (year from b.created_at) as booking_year,
+b.updated_at ,b.booking_status ,b.booking_sub_status,
+b.contract_start_date, extract (month from b.contract_start_date) as contract_start_date_month,extract (year from b.contract_start_date) as contract_start_date_year,
+b.contract_end_date ,extract (month from b.contract_end_date) as contract_end_date_month,extract (year from b.contract_end_date) as contract_end_date_year,
+b.contract_duration ,expected_movein_date,
+move_in_date, extract (month from b.move_in_date) as move_in_date_month,extract (year from b.move_in_date) as move_in_date_year,
+b.resident_id,
+b.move_out_date, extract (month from b.move_out_date) as move_out_date_month,extract (year from b.move_out_date) as move_out_date_year,
+b.lockin_start_date, extract (month from b.lockin_start_date) as lockin_start_date_month,extract (year from b.lockin_start_date) as lockin_start_date_year,
+b.lockin_end_date, extract (month from b.lockin_end_date) as lockin_end_date_month,extract (year from b.lockin_end_date) as lockin_end_date_year,
+b.booking_subtype,b.user_uuid,
+case when b.contract_end_date > b.move_out_date then 1
+     when b.contract_end_date < b.move_out_date then 0
+     when move_out_date is null then null
+     else null end as move_out_check,cb.cancellation_date as cancelled_date,b.lead_uuid
+from stanza.ims_booking_service_booking b
+left join (select * from stanza.ims_booking_service_cancelled_booking where id in (select max(id) from stanza.ims_booking_service_cancelled_booking  where "__hevo__marked_deleted" !=true and status=1 group by booking_uuid)) cb on
+cb.booking_uuid=b.uuid and cb."__hevo__marked_deleted" !=true
+where b."__hevo__marked_deleted" !=true and b.status =1 and b.test_booking =0 and b.booking_type <> 'B2B'
+and b.booking_status not in ('DRAFT','EXPIRED','IN_PROGRESS','PAYMENT_PENDING','SHARED_WITH_RESIDENT') --and b.uuid='2be32352-69a1-4b16-94b4-12c36ede50d1'
+order by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34),
+
+residence as (
+select b.uuid,b.booking_status,
+case when b.booking_type in ('MANAGED_APARTMENT') and b.booking_status in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then mr3.residence_name
+     when b.booking_type in ('MANAGED_APARTMENT') and b.booking_status not in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then mr4.residence_name
+     when b.booking_type not in ('B2B','MANAGED_APARTMENT') and b.booking_status in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then mr2.residence_name
+     when b.booking_type not in ('B2B','MANAGED_APARTMENT') and b.booking_status not in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then mr.residence_name end as residence_name,    
+coalesce(sum(case when b.booking_type in ('MANAGED_APARTMENT') and b.booking_status in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then io.beds
+     when b.booking_type in ('MANAGED_APARTMENT') and b.booking_status not in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then io1.beds end),    
+     case when b.booking_type not in ('B2B','MANAGED_APARTMENT') and b.booking_status in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then aux1.beds
+     when b.booking_type not in ('B2B','MANAGED_APARTMENT') and b.booking_status not in ('ONBOARDING_COMPLETED','AGREEMENT_PENDING','AGREEMENT_SENT','ONBOARDING_PENDING','ONBOARDING_IN_PROGRESS') then aux.beds end)
+     as beds
+from stanza.ims_booking_service_booking b
+left join (select * from stanza.ims_booking_service_booking_inventory_occupancy where (booking_uuid, id) in (select booking_uuid
+,max(id) from stanza.ims_booking_service_booking_inventory_occupancy where "__hevo__marked_deleted" !=true and status=1 and end_date>= current_date group by 1))
+aux1 on b.uuid=aux1.booking_uuid  and aux1.end_date >= current_date
+left join (select * from stanza.ims_booking_service_booking_inventory_occupancy where id in (select min(id) from stanza.ims_booking_service_booking_inventory_occupancy where "__hevo__marked_deleted" !=true and status=0 group by booking_uuid)) aux on
+b.uuid=aux.booking_uuid
+left join stanza.ims_booking_service_booking_inventory_occupancy io on b.uuid=io.booking_uuid and io.status =1 and
+io."__hevo__marked_deleted" !=true and io.end_date >= current_date
+left join stanza.ims_booking_service_booking_inventory_occupancy io1 on b.uuid=io1.booking_uuid
+                                                                     and io1.start_date <= b.contract_start_date
+                                                                     and io1.status =0 and io1."__hevo__marked_deleted" !=true
+                                                                     and io1.id in (select max(id)
+                                                                                     from stanza.ims_booking_service_booking_inventory_occupancy
+                                                                                     where "__hevo__marked_deleted" !=true
+                                                                                     and status=0
+                                                                                     group by booking_uuid)
+left join stanza.erp_transformation_master_residences mr on aux.residence_uuid= mr.uuid
+left join stanza.erp_transformation_master_residences mr2 on aux1.residence_uuid= mr2.uuid
+left join stanza.erp_transformation_master_residences mr3 on io.residence_uuid= mr3.uuid
+left join stanza.erp_transformation_master_residences mr4 on io1.residence_uuid= mr4.uuid
+where b.test_booking =0 and b.status =1 and b."__hevo__marked_deleted" !=true
+and b.booking_status not in ('DRAFT','EXPIRED','IN_PROGRESS','PAYMENT_PENDING','SHARED_WITH_RESIDENT')
+group by 1,2,3,b.booking_type,aux1.beds,aux.beds),
+
+pricing_scholar as (SELECT 
+  b.uuid,
+  round((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) - coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') 
+    THEN coalesce (ppli.amount,0) end),0))
+    /( 1.0*(datediff(day,date(contract_start_date),coalesce(ed.charged_till_date,b.contract_end_date)))/30.35),0)  as MR_net_of_gst,
+    
+    round(SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) - coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') 
+    THEN coalesce (ppli.amount,0) end),0),0) :: bigint as contract_revenue,
+    
+    round((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+    /nullif(MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)),0))
+    -coalesce (sum(case when ppli.line_item_value='DISCOUNT' then coalesce (ppli.amount,0) end),0),0) :: bigint as lockin_revenue,ed.charged_till_date,
+    MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date)) as new_lockin_dur,
+    MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)) as new_contract_dur    
+FROM 
+  stanza.ims_booking_service_booking b 
+  LEFT JOIN stanza.ims_payment_plan_payment_plan pp on b.uuid = pp.REFERENCE_ID
+  and PAYMENT_PLAN_TYPE IN(   'RENTAL', 'SERVICE', 'FOOD_SERVICE') and pp.status=1 and pp."__hevo__marked_deleted" !=true 
+  LEFT JOIN stanza.ims_payment_plan_payment_plan_line_item ppli on pp.id = ppli.payment_plan_id and ppli.status =1 and ppli."__hevo__marked_deleted" !=true
+  left join stanza.ims_booking_service_booking_exit_details ed on b.uuid = ed.booking_uuid and ed.status =1 and ed.potential_defaulter =0 and ed."__hevo__marked_deleted" !=true 
+where b.booking_type in ('SCHOLAR') and coalesce(ed.charged_till_date,b.contract_end_date) > pp.execution_date
+  and b."__hevo__marked_deleted" != 'true' and b.status =1 and b.test_booking =0
+  group by 1,b.contract_start_date,b.contract_end_date,b.lockin_end_date,b.lockin_start_date,ed.charged_till_date),
+  
+pricing_suit_lockin as (SELECT 
+  b.uuid,
+    ((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+    /nullif(MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)),0))
+    -coalesce (sum(case when ppli.line_item_value='DISCOUNT' then coalesce (ppli.amount,0) end),0))
+    /MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+    as MR_net_of_gst,
+    
+    round(SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) - coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') 
+    THEN coalesce (ppli.amount,0) end),0),0) as contract_revenue,
+    
+        round((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+    /nullif(MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)),0))
+    -coalesce (sum(case when ppli.line_item_value='DISCOUNT' then coalesce (ppli.amount,0) end),0),0) as lockin_revenue
+    ,ed.charged_till_date,
+    MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date)) as new_lockin_dur,
+    MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)) as new_contract_dur
+    FROM 
+  stanza.ims_booking_service_booking b 
+  LEFT JOIN stanza.ims_payment_plan_payment_plan pp on b.uuid = pp.REFERENCE_ID
+  and PAYMENT_PLAN_TYPE IN('RENTAL', 'SERVICE', 'FOOD_SERVICE') and pp.status=1 and pp."__hevo__marked_deleted" !=true 
+  left join stanza.ims_booking_service_booking_exit_details ed on b.uuid = ed.booking_uuid and ed.status =1 and ed.potential_defaulter =0 and ed."__hevo__marked_deleted" !=true 
+  LEFT JOIN stanza.ims_payment_plan_payment_plan_line_item ppli on pp.id = ppli.payment_plan_id and ppli.status =1 and ppli."__hevo__marked_deleted" !=true
+WHERE  b.booking_type in ('PROFESSIONAL','MANAGED_APARTMENT') and current_date <= b.lockin_end_date 
+  and b."__hevo__marked_deleted" != 'true' and coalesce(ed.charged_till_date,b.contract_end_date) > pp.execution_date and b.status =1 and b.test_booking =0
+  group by 1,b.lockin_start_date,b.lockin_end_date,b.contract_start_date,b.contract_end_date,ed.charged_till_date),
+
+pricing_suit_not_lockin as (SELECT 
+  b.uuid,
+  ((SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END)- coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') THEN 
+    ppli.AMOUNT END),0)) -
+    
+    (((SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END)) * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+    /nullif(months_between(coalesce(ed.charged_till_date,b.contract_end_date),b.contract_start_date),0)) -  
+    coalesce(SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') THEN ppli.AMOUNT END ),0)))
+    /nullif((months_between(coalesce(ed.charged_till_date,b.contract_end_date),b.contract_start_date) - MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))),0)
+    as MR_net_of_gst,
+    
+    round(SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) - coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') 
+    THEN coalesce (ppli.amount,0) end),0),0) as contract_revenue,
+    
+        round((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN 
+    coalesce(ppli.AMOUNT,0) END) * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+    /nullif(MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)),0))
+    -coalesce (sum(case when ppli.line_item_value='DISCOUNT' then coalesce (ppli.amount,0) end),0),0) as lockin_revenue,ed.charged_till_date,
+    MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date)) as new_lockin_dur,
+    MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)) as new_contract_dur
+    
+FROM 
+  stanza.ims_booking_service_booking b 
+  LEFT JOIN stanza.ims_payment_plan_payment_plan pp on b.uuid = pp.REFERENCE_ID
+  and PAYMENT_PLAN_TYPE IN(   'RENTAL', 'SERVICE', 'FOOD_SERVICE') and pp.status=1 and pp."__hevo__marked_deleted" !=true 
+  LEFT JOIN stanza.ims_payment_plan_payment_plan_line_item ppli on pp.id = ppli.payment_plan_id and ppli.status =1 and ppli."__hevo__marked_deleted" !=true
+left join stanza.ims_booking_service_booking_exit_details ed on b.uuid = ed.booking_uuid and ed.status =1 and ed.potential_defaulter =0 and ed."__hevo__marked_deleted" !=true 
+  WHERE  b.booking_type in ('PROFESSIONAL','MANAGED_APARTMENT')
+ and current_date > b.lockin_end_date  and coalesce(ed.charged_till_date,b.contract_end_date) > pp.execution_date and b.status =1 and b.test_booking =0
+  and b."__hevo__marked_deleted" != 'true' --and b.uuid ='32d30812-504e-422c-bf1e-5728377dc2ee'
+  group by 1,b.lockin_start_date,b.lockin_end_date,b.contract_start_date,b.contract_end_date,ed.charged_till_date),
+  
+pricing_mr as (select * from pricing_scholar union select * from pricing_suit_not_lockin union select * from pricing_suit_lockin  ),
+
+pricing_over_ct as (SELECT b.uuid,
+    SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT') THEN ppli.AMOUNT END ) AS discount,  
+  round((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('MAINTENANCE_FEE','ANNUAL_MAINTENANCE_FEE','LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN
+    ppli.AMOUNT END) - coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT')
+    THEN coalesce (ppli.amount,0)end),0)),0) as contract_revenue_over_ct_with_amc,
+    
+    ((SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('MAINTENANCE_FEE','ANNUAL_MAINTENANCE_FEE','LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN
+    ppli.AMOUNT  END) * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+     /nullif(MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)),0))
+    -coalesce (sum(case when ppli.line_item_value='DISCOUNT' then coalesce (ppli.amount,0)end),0)) as lockin_revenue_over_ct_with_amc ,
+  round((SUM( CASE WHEN ppli.LINE_ITEM_VALUE IN('LICENSE_FEE', 'PACKAGED_SERVICE_FEE', 'FOOD_SERVICE_FEE', 'UPSELL', 'CITY_HEAD_BUFFER') THEN
+    ppli.AMOUNT END) - coalesce (SUM(CASE WHEN ppli.LINE_ITEM_VALUE IN('DISCOUNT')
+    THEN coalesce (ppli.amount,0)end),0)),0) as contract_revenue_over_ct,
+    
+    contract_revenue_over_ct * MONTHS_BETWEEN (coalesce(ed.charged_till_date,date(b.lockin_end_date)),date(b.lockin_start_date))
+     /nullif(MONTHS_BETWEEN(coalesce(ed.charged_till_date,b.contract_end_date),date(b.contract_start_date)),0) as lockin_revenue_over_ct
+FROM
+  stanza.ims_booking_service_booking b
+  LEFT JOIN stanza.ims_payment_plan_payment_plan pp on b.uuid = pp.REFERENCE_ID
+  and PAYMENT_PLAN_TYPE IN('MAINTENANCE_FEE','ANNUAL_MAINTENANCE_FEE', 'RENTAL', 'SERVICE', 'FOOD_SERVICE') and pp.status=1 and pp."__hevo__marked_deleted" !=true
+  LEFT JOIN stanza.ims_payment_plan_payment_plan_line_item ppli on pp.id = ppli.payment_plan_id and ppli.status =1 and ppli."__hevo__marked_deleted" !=true
+  left join stanza.ims_booking_service_booking_exit_details ed on b.uuid = ed.booking_uuid and ed.status =1 and ed.potential_defaulter =0 and ed."__hevo__marked_deleted" !=true
+WHERE b.booking_type in ('SCHOLAR','PROFESSIONAL','MANAGED_APARTMENT')  
+and coalesce(ed.charged_till_date,b.contract_end_date) > pp.execution_date and b.booking_type <> 'B2B'
+  and b."__hevo__marked_deleted" != 'true' and b.test_booking =0 and b.status =1
+group by 1,b.lockin_start_date,b.lockin_end_date,b.contract_start_date,b.contract_end_date,ed.charged_till_date
+),
+
+pricing as (  select pm.*,pc.discount,pc.contract_revenue_over_ct,pc.lockin_revenue_over_ct,contract_revenue_over_ct_with_amc,lockin_revenue_over_ct_with_amc from 
+pricing_mr pm
+left join pricing_over_ct pc on pc.uuid=pm.uuid
+
+),
+
+circle as (select distinct city,circle from stanza.derived_lead_data dld),
+
+base as (select *, 
+count(case when yn_flag = 'N' then created_at end) over(partition by res_ident_id order by move_in_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) counting_flag
+from
+(select *,
+case when datediff('days',last_move_out_date,move_in_date) is null then null
+when datediff('days',last_move_out_date,move_in_date) <= 30 then 'Y' else 'N' end as yn_flag,
+lag(res_ident_id) over(partition by res_ident_id order by created_at) last_derived_resident_id
+from(
+select *,
+lag(move_out_date) over(partition by res_ident_id order by move_in_date, move_out_date) last_move_out_date,
+lead(move_in_date) over(partition by res_ident_id order by move_in_date, move_out_date) next_move_in_date
+from
+(select *,
+ row_number() over(partition by coalesce(user_uuid,resident_id) order by created_at) rn
+from
+(select distinct b.uuid, b.booking_type, b.created_at, b.booking_month, b.booking_year,
+b.updated_at, b.booking_status, b.booking_sub_status, b.contract_start_date, b.contract_start_date_month,
+b.contract_start_date_year, b.contract_end_date, b.contract_end_date_month, b.contract_end_date_year,
+b.contract_duration, b.expected_movein_date, b.move_in_date, b.move_in_date_month, b.move_in_date_year,
+b.resident_id, case when b.move_in_date is null then null else b.move_out_date end move_out_date,
+case when b.move_in_date is null then null else b.move_out_date_month end move_out_date_month,
+case when b.move_in_date is null then null else b.move_out_date_year end move_out_date_year,
+b.lockin_start_date, b.lockin_start_date_month,
+b.lockin_start_date_year, b.lockin_end_date, b.lockin_end_date_month, b.lockin_end_date_year, b.booking_subtype, b.user_uuid,
+b.move_out_check, b.cancelled_date, b.lead_uuid,beds,r.residence_name,mm.micromarket_name,coalesce(mc.city_name,mc1.city_name) as city_name,
+coalesce (c.circle,c1.circle) as circle,ld.first_name,ld.last_name,ld.phone,discount,contract_revenue,lockin_revenue,
+mr.residence_category, coalesce(user_uuid,resident_id)  res_ident_id,charged_till_date,new_lockin_dur,new_contract_dur,contract_revenue_over_ct,lockin_revenue_over_ct,
+contract_revenue_over_ct_with_amc,lockin_revenue_over_ct_with_amc
+from booking b
+left join residence r on r.uuid = b.uuid
+left join stanza.erp_transformation_master_residences mr on r.residence_name = mr.residence_name
+left join stanza.erp_transformation_master_micromarket mm on mm.uuid = mr.micromarket_id and mm."__hevo__marked_deleted" !=true
+left join stanza.erp_transformation_master_cities mc on mc.uuid = mm.city_id and mc."__hevo__marked_deleted" !=true
+left join stanza.erp_transformation_master_cities mc1 on mc1.id = mm.city_id and mc1."__hevo__marked_deleted" !=true
+left join circle c on c.city=mc.city_name
+left join circle c1 on c1.city=mc1.city_name
+left join stanza.derived_lead_data ld on ld.lead_uuid = b.lead_uuid
+left join pricing p on p.uuid=b.uuid
+where mr.residence_category != 'POCO' and lower(mr.residence_name) not like '%test%'
+)
+)
+)
+)
+),
+
+fnl as (select distinct uuid, booking_type, created_at, booking_month, booking_year, updated_at, booking_status,
+booking_sub_status, contract_start_date, contract_start_date_month, contract_start_date_year, contract_end_date,
+contract_end_date_month, contract_end_date_year, contract_duration, expected_movein_date, move_in_date, move_in_date_month,
+move_in_date_year,
+ concat(res_ident_id,cast(counting_flag as varchar)) as resident_id,
+move_out_date, move_out_date_month, move_out_date_year, lockin_start_date, lockin_start_date_month,
+lockin_start_date_year, lockin_end_date, lockin_end_date_month, lockin_end_date_year, booking_subtype, resident_id as student_id, move_out_check,
+cancelled_date, lead_uuid, beds, residence_name, micromarket_name, city_name, circle, first_name, last_name, phone,
+discount, contract_revenue, lockin_revenue,residence_category,charged_till_date,new_lockin_dur,new_contract_dur,contract_revenue_over_ct,lockin_revenue_over_ct,
+contract_revenue_over_ct_with_amc,lockin_revenue_over_ct_with_amc
+from base
+where (lower(first_name) not like '%test%' or first_name is null)
+      and (lower(last_name) not like '%test%' or last_name is null)
+and student_id not like '%ABC%' and student_id not like '%AAAAA%' and student_id not like '%AAAAA%' AND student_id not like '%TES%' AND student_id not like '%TTS%'  AND student_id not like '%TSP%' AND student_id not like '%TST%'  AND student_id not like '%ZXC%' AND student_id not like '%ZZZ%' AND student_id not like '%ZZy%' AND student_id not like '%TUB%'  AND student_id not like '%XYZ%' AND student_id not like '%JUT%' AND student_id not like '%TSD%' AND student_id not like '%TSH%' 
+      
+),
+
+fnlr as (select distinct uuid, booking_type, created_at, booking_month, booking_year, updated_at, booking_status,
+booking_sub_status, contract_start_date, contract_start_date_month, contract_start_date_year, contract_end_date,
+contract_end_date_month, contract_end_date_year, contract_duration, expected_movein_date, move_in_date, move_in_date_month,
+move_in_date_year, resident_id,
+move_out_date, move_out_date_month, move_out_date_year, lockin_start_date, lockin_start_date_month,
+lockin_start_date_year, lockin_end_date, lockin_end_date_month, lockin_end_date_year, booking_subtype, student_id, move_out_check,
+cancelled_date, lead_uuid, beds, residence_name, micromarket_name, city_name, circle,  first_name, last_name, phone,
+discount, lockin_revenue,residence_category,charged_till_date,
+new_lockin_dur,new_contract_dur,contract_revenue_over_ct,lockin_revenue_over_ct,
+contract_revenue_over_ct_with_amc,lockin_revenue_over_ct_with_amc,
+row_number() over(partition by resident_id order by created_at) ranking
+from fnl),
+
+rk as (select resident_id, city_name, circle, micromarket_name, residence_category
+from fnlr
+where ranking = 1)
+
+select distinct fnlr.*, rk.circle as ltv_circle,
+rk.city_name  as ltv_city,rk.micromarket_name  as ltv_micromarket,
+rk.residence_category as ltv_residence_category,
+min(move_in_date) over(partition by fnlr.resident_id) first_move_in_date
+from fnlr
+left join rk on fnlr.resident_id =rk.resident_id

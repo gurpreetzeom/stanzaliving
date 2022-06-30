@@ -362,7 +362,6 @@ total_bed_count, Latest_Stage,Latest_Stage_old, no_sent_back,comp_fnl2.date_late
 from comp_fnl1
 inner join comp_fnl2
 on comp_fnl1.prop_plus_current=comp_fnl2.prop_plus_status
---where propertyname='Deokar Hostel 5'
 
 
 

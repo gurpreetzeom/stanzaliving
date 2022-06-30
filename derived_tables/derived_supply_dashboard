@@ -100,7 +100,7 @@ from V1
 union
 select createdat as createdDate, PropertyName, property_name, cityname as city, micromarketname as micromarket_name,
 estate_status, updatedAt, propertyUUID, status, type_of_Brand as typeOfBrand, cast(expected_bed_count as bigint) expectedBedCount, effective_bed_count as effectiveBedCount, building_handover_date as buildingHandoverDate, rent_start_date as rentStartDate,
-lease_Duration_In_Years as leasedurationinyears, lease_Lock_InPeriod_In_Years as leaselockinperiodinyears, monthly_Rent as monthlyrent, security_Deposit_Months_OfRent as securitydepositmonthsofrent, advance_Rent_Month_Count as advancerentmonthcount, rental_Inflation_InYears as rentalinflationinyears, building_type as buildingtype, 'V2' as bifurcation from V2
+lease_Duration_In_Years as leasedurationinyears, lease_Lock_InPeriod_In_Years as leaselockinperiodinyears, monthly_Rent monthlyrent, security_Deposit_Months_OfRent as securitydepositmonthsofrent, advance_Rent_Month_Count as advancerentmonthcount, rental_Inflation_InYears as rentalinflationinyears, building_type as buildingtype, 'V2' as bifurcation from V2
 order by bifurcation,1),
 
 comp_fnl as (select comb.*, case when city = 'Ahmedabad' then 'West'
@@ -146,31 +146,32 @@ when city = 'Nashik' then 'West'
 when city = 'Baroda' then 'West'
 when city = 'Vidhya Nagar' then 'West'
 when city = 'Vizag' then 'South' end as "zone",
+
 case when city = 'Ahmedabad' then 'West 1'
 when city = 'Vidya Nagar' then 'West 1'
 when city = 'Pune' then 'West 2'
 when city = 'Hyderabad' then 'AP + Telangana'
-when city = 'Bangalore' then 'Karnataka + Kerala'
+when city = 'Bangalore' then 'Karnataka'
 when city = 'Delhi' then 'North + East'
 when city = 'Gandhinagar' then 'West 1'
-when city = 'Coimbatore' then 'Tamil Nadu'
-when city = 'Chennai' then 'Tamil Nadu'
+when city = 'Coimbatore' then 'Tamil Nadu + Kerala'
+when city = 'Chennai' then 'Tamil Nadu + Kerala'
 when city = 'Indore' then 'West 1'
 when city = 'Vishakhapatnam' then 'AP + Telangana'
-when city = 'Cochin' then 'Karnataka + Kerala'
+when city = 'Cochin' then 'Tamil Nadu + Kerala'
 when city = 'Jaipur' then 'North + East'
 when city = 'Nagpur' then 'West 2'
 when city = 'Dehradun' then 'North + East'
-when city = 'Manipal' then 'Karnataka + Kerala'
+when city = 'Manipal' then 'Karnataka'
 when city = 'Vadodara' then 'West 1'
 when city = 'Vijayawada' then 'AP + Telangana'
-when city = 'Mangalore' then 'Karnataka + Kerala'
+when city = 'Mangalore' then 'Karnataka'
 when city = 'Visakhapatnam' then 'AP + Telangana'
-when city = 'Belgaum' then 'Karnataka + Kerala'
-when city = 'Hosur' then 'Karnataka + Kerala'
-when city = 'Trivandrum' then 'Karnataka + Kerala'
+when city = 'Belgaum' then 'Karnataka'
+when city = 'Hosur' then 'Karnataka'
+when city = 'Trivandrum' then 'Tamil Nadu + Kerala'
 when city = 'Guntur' then 'AP + Telangana'
-when city = 'Hubli Dharawal' then 'Karnataka + Kerala'
+when city = 'Hubli Dharawal' then 'Karnataka'
 when city = 'Bhopal' then 'West 1'
 when city = 'Gurgaon' then 'North + East'
 when city = 'Bhuabneshwar' then 'North + East'
@@ -178,13 +179,14 @@ when city = 'Tirupati' then 'AP + Telangana'
 when city = 'Mumbai' then 'West 1'
 when city = 'Noida' then 'North + East'
 when city = 'Greater Noida' then 'North + East'
-when city = 'Kochi' then 'Karnataka + Kerala'
+when city = 'Kochi' then 'Tamil Nadu + Kerala'
 when city = 'Bhubaneswar' then 'North + East'
+when city = 'Bhubaneshwar' then 'North + East'
 when city = 'Kota' then 'North + East'
 when city = 'Lucknow' then 'North + East'
 when city = 'Rajkot' then 'West 1'
-when city = 'Udupi' then 'Karnataka + Kerala'
-when city = 'Bengaluru' then 'Karnataka + Kerala'
+when city = 'Udupi' then 'Karnataka'
+when city = 'Bengaluru' then 'Karnataka'
 when city = 'Nashik' then 'West 2'
 when city = 'Baroda' then 'West 1'
 when city = 'Vidhya Nagar' then 'West 1'
@@ -205,8 +207,10 @@ when estate_status = 'SENT_BACK_L1_BY_SANDEEP' then '2.Pre L1'
 when estate_status = 'SENT_TO_FILL_L2_DETAILS' then '4.Pre L2 approval'
 when estate_status = 'SENT_FOR_L2_APPROVAL_TO_ZH' then '4.Pre L2 approval'
 when estate_status = 'SENT_BACK_L2_BY_ZH' then '4.Pre L2 approval'
+when estate_status =  'SENT_BACK_L2_BY_ZH_L2'  then '4.Pre L2 approval'
 when estate_status = 'SENT_FOR_L2_APPROVAL_TO_NH' then '5.L2'
 when estate_status = 'SENT_BACK_L2_BY_NH' then '4.Pre L2 approval'
+when estate_status = 'SENT_BACK_L2_BY_NH_L2' then '4.Pre L2 approval'
 when estate_status = 'SENT_TO_TRANSFORMATION_AND_TITLE_DOCS' then '5.L2'
 when estate_status = 'SENT_TO_TITLE_DOCS_AND_SANDEEP' then '5.L2'
 when estate_status = 'SENT_TO_TITLE_DOCS' then '5.L2'
@@ -275,8 +279,10 @@ when estate_status = 'SENT_BACK_L1_BY_SANDEEP' then '2.Pre L1'
 when estate_status = 'SENT_TO_FILL_L2_DETAILS' then '4.Pre L2 approval'
 when estate_status = 'SENT_FOR_L2_APPROVAL_TO_ZH' then '4.Pre L2 approval'
 when estate_status = 'SENT_BACK_L2_BY_ZH' then '4.Pre L2 approval'
+when estate_status =  'SENT_BACK_L2_BY_ZH_L2'  then '4.Pre L2 approval'
 when estate_status = 'SENT_FOR_L2_APPROVAL_TO_NH' then '5.L2'
 when estate_status = 'SENT_BACK_L2_BY_NH' then '4.Pre L2 approval'
+when estate_status = 'SENT_BACK_L2_BY_NH_L2' then '4.Pre L2 approval'
 when estate_status = 'SENT_TO_TRANSFORMATION_AND_TITLE_DOCS' then '5.L2'
 when estate_status = 'SENT_TO_TITLE_DOCS_AND_SANDEEP' then '5.L2'
 when estate_status = 'SENT_TO_TITLE_DOCS' then '5.L2'
@@ -356,4 +362,10 @@ total_bed_count, Latest_Stage,Latest_Stage_old, no_sent_back,comp_fnl2.date_late
 from comp_fnl1
 inner join comp_fnl2
 on comp_fnl1.prop_plus_current=comp_fnl2.prop_plus_status
+--where propertyname='Deokar Hostel 5'
+
+
+
+
+
 

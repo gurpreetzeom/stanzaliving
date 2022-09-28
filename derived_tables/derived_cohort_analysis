@@ -271,3 +271,5 @@ rk.residence_category as ltv_residence_category,
 min(move_in_date) over(partition by fnlr.resident_id) first_move_in_date
 from fnlr
 left join rk on fnlr.resident_id =rk.resident_id
+
+.
